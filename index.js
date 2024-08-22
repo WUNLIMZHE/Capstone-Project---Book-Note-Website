@@ -1,34 +1,36 @@
 import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
-import { render } from "ejs";
+// import { render } from "ejs";
 import env from "dotenv";
 const { Pool } = pg;
-const itemsPool = new Pool({
+
+const app = express();
+const port = 3000;
+env.config(); // Load environment variables
+
+// Set up the PostgreSQL connection pool
+const db = new Pool({
   connectionString: process.env.DBConfigLink,
   ssl: {
       rejectUnauthorized: false
   }
 });
-module.exports = itemsPool;
-const itemsPool = require('./dbConfig');
-
-const app = express();
-const port = 3000;
-env.config();
+// module.exports = itemsPool;
+// const itemsPool = require('./dbConfig');
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-const db = new pg.Client({
-  user: process.env.PG_USER,
-  host: process.env.PG_HOST,
-  database: process.env.PG_DATABASE,
-  password: process.env.PG_PASSWORD,
-  port: process.env.PG_PORT,
-});
+// const db = new pg.Client({
+//   user: process.env.PG_USER,
+//   host: process.env.PG_HOST,
+//   database: process.env.PG_DATABASE,
+//   password: process.env.PG_PASSWORD,
+//   port: process.env.PG_PORT,
+// });
 
-db.connect();
+//db.connect();
 
 let posts = [
   { 
@@ -53,7 +55,7 @@ app.get("/", async (req, res) => {
   console.log("app.get("/", async (req, res)");
   console.log("state: ", state);
   try{
-    const result = await itemsPool.query(
+    const result = await db.query(
       "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY books.id ASC;"
     );
     posts = [];
@@ -74,7 +76,7 @@ app.get("/me", async (req, res) => {
   state = "user";
   console.log("state: ", state);
   try{
-    const result = await itemsPool.query(
+    const result = await db.query(
       "SELECT * FROM books WHERE user_id = $1 ORDER BY id ASC", 
       [user_id]
     );
@@ -119,7 +121,7 @@ app.post("/search", async (req, res) =>{
   if (state == "home"){ //if user use search function in home page
     if (type == "title"){
       try{
-        const result = await itemsPool.query(
+        const result = await db.query(
           "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE LOWER(books.title) LIKE '%' || $1 || '%';",
           [input.toLowerCase()]
         );
@@ -146,7 +148,7 @@ app.post("/search", async (req, res) =>{
       }
     } else if (type == "isbn"){
       try{
-        const result = await itemsPool.query(
+        const result = await db.query(
           "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE books.isbn = $1;",
           [input]
         );
@@ -177,7 +179,7 @@ app.post("/search", async (req, res) =>{
     if (type == "title"){
       //user wish to search the book via isbn number
       try{
-        const result = await itemsPool.query(
+        const result = await db.query(
           "SELECT * FROM books WHERE LOWER(title) LIKE '%' || $1 || '%' AND user_id = $2;",
           [input.toLowerCase(), user_id]
         );
@@ -205,7 +207,7 @@ app.post("/search", async (req, res) =>{
     } else if (type == "isbn"){
       //user wish to search the book via book title
       try{
-        const result = await itemsPool.query(
+        const result = await db.query(
           "SELECT * FROM books WHERE isbn = $1 AND user_id = $2;",
           [input, user_id]
         );
@@ -258,7 +260,7 @@ app.post("/sort", async (req, res) => {
 
     try{
       console.log("query: ", query);
-      const result = await itemsPool.query(query);
+      const result = await db.query(query);
       posts = [];
       posts = result.rows;
       // Log the raw result
@@ -295,7 +297,7 @@ app.post("/sort", async (req, res) => {
 
     try{
       console.log("query: ", query);
-      const result = await itemsPool.query(query, [username]);
+      const result = await db.query(query, [username]);
       posts = [];
       posts = result.rows;
       // Log the raw result
@@ -327,7 +329,7 @@ app.get("/new", (req, res) => {
 app.post("/edit", async (req, res) => {
   const updateID = req.body.updatedPostId;
   try {
-    const response = await itemsPool.query(
+    const response = await db.query(
       "SELECT * FROM books WHERE id = $1;",
       [updateID]
     );
@@ -356,7 +358,7 @@ app.post("/update", async (req, res) => {
   console.log("updateReview: ", updateReview);
   console.log("updateRating: ", updateRating);
   try{
-    await itemsPool.query(
+    await db.query(
       "UPDATE books SET title = ($1), isbn = ($2), review = ($3), rating = ($4) WHERE id = ($5);",
       [updateTitle, updateISBN, updateReview, updateRating, updateID]
     );
@@ -378,7 +380,7 @@ app.post("/posts", async(req, res) => {
   console.log("review: ", review);
   console.log("rating: ", rating);
   try{
-    const result = await itemsPool.query(
+    const result = await db.query(
       "SELECT * FROM books WHERE isbn = $1 AND user_id = $2",
       [isbn, user_id]
     );
@@ -400,7 +402,7 @@ app.post("/posts", async(req, res) => {
   }
 
   try{
-    await itemsPool.query(
+    await db.query(
       "INSERT INTO books (user_id, isbn, rating, title, review, date) VALUES ($1, $2, $3, $4, $5, $6);",
       [user_id, isbn, rating, title, review, date]
     );
@@ -413,7 +415,7 @@ app.post("/posts", async(req, res) => {
 app.post("/delete", async (req, res) => {
   const deleteID = req.body.deletePostId;
   try{
-    await itemsPool.query(
+    await db.query(
       "DELETE FROM books WHERE id = ($1);",
       [deleteID]
     );
