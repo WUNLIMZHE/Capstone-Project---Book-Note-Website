@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= heading %></title>
+  <link rel="stylesheet" href="/styles/main.css">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+</head>
+
+<body>
+  <div class="container">
+    <form method="get" action="/me" >
+      <button type="submit" class="btn btn-primary btn-lg">Back</button>
+    </form>
+    <h1>
+      <%= heading %>
+    </h1>
+    <% if (locals.error){ %>
+      <h2>
+        <%= error %>
+      </h2>
+    <% } %>
+
+    <% if (locals.post) { %>
+      <form id="editForm" method="post" action="/update">
+        <input type="hidden" name="id" value="<%= post.id %>">
+
+        <label for="title" class="form-label">Book Title: </label>
+        <input type="text" name="title" value="<%=post.title %>" id="title" required>
+
+        <div class="dropdown">
+          <ul id="dropdownList"></ul>
+        </div>
+
+        <label for="isbn" class="form-label mt-3">ISBN (without "-"):</label>
+        <input type="number" name="isbn" value="<%=post.isbn %>" id="isbn" required>
+
+        <label for="review" class="form-label mt-3">Review:</label>
+        <textarea name="review" rows="10" id="review"><%=post.review %></textarea>
+
+        <label for="rating" class="form-label mt-3">Rating:</label>
+        <div class="slider-container" id="rating">
+          <input name="rating" type="range" id="rangeSlider" min="1" max="10" value=<%=post.rating %> oninput="updateInputValue(this.value)">
+          <input type="number" id="rangeInput" min="1" max="10" value=<%=post.rating %> oninput="updateSliderValue(this.value)">
+        </div>
+        <button class="full-width submit-button mt-3" type="submit">
+          <%= submit %>
+        </button>
+      </form>
+      <% } else {%>
+        <form id="newPostForm" method="post" action="/posts">
+
+          <label for="title" class="form-label mt-3">Book Title: </label>
+          <input type="text" name="title" id="title" autofocus placeholder="Title" required>
+
+          <label for="isbn" class="form-label mt-3">ISBN (without "-"):</label>
+          <input type="number" name="isbn" id="isbn" placeholder="ISBN" required>
+
+          <label for="review" class="form-label mt-3">Review:</label>
+          <textarea name="review" id="review" placeholder="Content" required rows="10"></textarea>
+
+          <label for="rating" class="form-label mt-3">Rating:</label>
+          <div class="slider-container" id="rating">
+            <input type="range" name="rating" id="rangeSlider" min="1" max="10" value="10" oninput="updateInputValue(this.value)">
+            <input type="number" id="rangeInput" min="1" max="10" value="10" oninput="updateSliderValue(this.value)">
+          </div>
+          <button class="full-width submit-button mt-3" type="submit">
+            <%= submit %>
+          </button>
+        </form>
+        <% } %>
+
+  </div>
+  <script>
+    function updateInputValue(val) {
+    document.getElementById('rangeInput').value = val;
+}
+
+function updateSliderValue(val) {
+    document.getElementById('rangeSlider').value = val;
+}
+
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</body>
+
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Review</title>
+  <link rel="stylesheet" href="/styles/main.css">
+  <!-- <script src="https://unpkg.com/axios/dist/axios.min.js"></script> -->
+  <link rel="icon" type="image/x-icon" href="/images/icon.png">
+</head>
+
+<body>
+  <%- include('partials/header.ejs'); -%>
+  <div class="container" id ="posts-container">
+    <%# username %>
+    <% if (locals.state == "user" && !(locals.search)){ %>
+      <h1 class="text-center">Welcome Back, <%= locals.username %>!</h1>
+      <div class="d-flex" style="justify-content: center;">
+        <form action="/new" method="get">
+          <button id="newPostBtn" type="submit" style="color: white; cursor: pointer;">
+            New Note
+          </button>
+        </form>
+      </div>
+    <% } %>
+    <% if (locals.search){ %>
+      <h1 class="text-center">Search result:</h1>
+    <% } %>
+    <% if (locals.state == "home" && !(locals.search)){ %>
+      <h1 class="text-center">Welcome to Book Note Application!</h1>
+    <% } %>
+    <ul id="postsList">
+      <% if (locals.posts){ %>
+        <% posts.forEach(post=> { %>
+          <li>
+            <div class="container d-flex">
+              <div class="pe-3">
+                <img src="https://covers.openlibrary.org/b/isbn/<%= post.isbn %>-M.jpg" alt="Book cover of the book <%= post.title %>">
+              </div>
+              <div>
+                <h2>
+                  <%=post.title%>
+                </h2>
+                <% if (locals.state == "home"){ %>
+                  <small>Review by: <%=post.name%> </small>
+                <% } %>
+                <small>
+                  <%=post.date %>
+                </small>
+                <p>
+                  <%=post.review%>
+                </p>
+                <small>
+                  Rating: <%=post.rating%>/10
+                </small>
+                <small>ISBN: <%=post.isbn%> </small>
+                <% if (locals.state == "user" ){ %>
+                  <form action="/edit" method="post" style="display: inline;">
+                    <input type="hidden" name="updatedPostId" value="<%= post.id %>">
+                    <button class="edit me-2" type="submit" style="color: #fff; text-decoration: none; cursor: pointer;">
+                      Edit
+                    </button>
+                  </form>
+                  <form action="/delete" method="post" style="display: inline;">
+                    <input type="hidden" name="deletePostId" value="<%= post.id %>">
+                    <button class="delete" type="submit" style="color: #fff; text-decoration: none; cursor: pointer;">
+                      Delete
+                    </button>
+                  </form>
+                  <!-- <a class="edit" href="/edit/<%= post.id %>" style="color: #fff; text-decoration: none;">Edit</a> -->
+                  <!-- <a class="delete" href="/api/posts/delete/<%= post.id %>" style="color: #fff; text-decoration: none;" >Delete</a> -->
+                <% } %>
+                </div>
+            </div>
+          </li>
+        <% }); %>
+      <% } %>
+
+
+    </ul>
+    <% if (locals.message){ %>
+      <h2 class="text-center"><%= message %></h2>
+    <% } %>
+  </div>
+  <%- include ('partials/footer') %>
+</body>
+
+</html>
