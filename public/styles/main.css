@@ -154,3 +154,44 @@ input[type="range"] {
 #rangeInput{
   width: 60px;
 }
+
+#Home:hover, #My-note:hover, #Sort:hover{
+  --bs-text-opacity: none;
+}
+
+.fa-search:before {
+  content: "\f002";
+}
+
+.search-expand {
+  transition: all 0.3s ease;
+}
+
+.search-expand-inner {
+  padding: 10px;
+  margin: 5px 0;
+}
+.search-field {
+  padding: 8px;
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.search-submit {
+  padding: 8px 16px;
+  background-color: #333;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.search-submit:hover {
+  background-color: #555;
+}
+
+/* @media (min-width: 576px) {
+  .scale-sm-70 {
+    transform: scale(0.7);
+    transform-origin: center;
+  }
+} */

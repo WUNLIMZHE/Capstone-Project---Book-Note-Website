@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Book Review</title>
+  <title>Reader Hub</title>
   <link rel="stylesheet" href="/styles/main.css">
   <!-- <script src="https://unpkg.com/axios/dist/axios.min.js"></script> -->
   <link rel="icon" type="image/x-icon" href="/images/icon.png">
@@ -28,7 +28,7 @@
       <h1 class="text-center">Search result:</h1>
     <% } %>
     <% if (locals.state == "home" && !(locals.search)){ %>
-      <h1 class="text-center">Welcome to Book Note Application!</h1>
+      <h1 class="text-center">Welcome to Reader Hub!</h1>
     <% } %>
     <ul id="postsList">
       <% if (locals.posts){ %>
@@ -36,14 +36,14 @@
           <li>
             <div class="container d-flex">
               <div class="pe-3">
-                <img src="https://covers.openlibrary.org/b/isbn/<%= post.isbn %>-M.jpg" alt="Book cover of the book <%= post.title %>">
+                <img id="book-cover" src="https://covers.openlibrary.org/b/isbn/<%= post.isbn %>-M.jpg" alt="Book cover of the book <%= post.title %>">
               </div>
               <div>
                 <h2>
                   <%=post.title%>
                 </h2>
                 <% if (locals.state == "home"){ %>
-                  <small>Review by: <%=post.name%> </small>
+                  <small>Review by: <%=post.username%> </small>
                 <% } %>
                 <small>
                   <%=post.date %>
@@ -84,6 +84,8 @@
     <% } %>
   </div>
   <%- include ('partials/footer') %>
+  <script src="/public/js/main.js"></script>
+  <!-- <script src="/js/main.js"></script> -->
 </body>
 
 </html>

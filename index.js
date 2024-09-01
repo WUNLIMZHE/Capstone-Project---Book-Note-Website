@@ -1,36 +1,54 @@
 import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
+const { Pool } = pg;
 // import { render } from "ejs";
 import env from "dotenv";
-const { Pool } = pg;
+import bcrypt from "bcrypt";
+import passport from "passport";
+import { Strategy } from "passport-local";
+import GoogleStrategy from "passport-google-oauth2";
+import FacebookStrategy from "passport-facebook";
+import session from "express-session";
 
-const app = express();
-const port = 3000;
 env.config(); // Load environment variables
+const app = express();
+const port = process.env.PORT;
+
+const saltRounds = 10;
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true,
+  })
+);
 
 // Set up the PostgreSQL connection pool
-const db = new Pool({
-  connectionString: process.env.DBConfigLink,
-  ssl: {
-      rejectUnauthorized: false
-  }
-});
-// module.exports = itemsPool;
-// const itemsPool = require('./dbConfig');
+// console.log("DB_URL", process.env.DB_URL);
+// const db = new Pool({
+//   connectionString: process.env.DB_URL,
+//   ssl: {
+//       rejectUnauthorized: false
+//   }
+// });
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// const db = new pg.Client({
-//   user: process.env.PG_USER,
-//   host: process.env.PG_HOST,
-//   database: process.env.PG_DATABASE,
-//   password: process.env.PG_PASSWORD,
-//   port: process.env.PG_PORT,
-// });
+app.use(passport.initialize());
+app.use(passport.session());
 
-//db.connect();
+const db = new pg.Client({
+  user: process.env.PG_USER,
+  host: process.env.PG_HOST,
+  database: process.env.PG_DATABASE,
+  password: process.env.PG_PASSWORD,
+  port: process.env.PG_PORT,
+});
+
+db.connect();
 
 let posts = [
   { 
@@ -44,19 +62,31 @@ let posts = [
   },
 ];
 
+//to hold the current user's information
 let state = "home";
 let username = "Peter";
 let user_id = 1;
 
+//temporary store user's registration info. 
+let email = "";
+let password = "";
+
+//to hold the state of the login
+let isLogin = false;
+
 //bring user to home page
 //trigerred when the app load initially / user use the search / sort button
 app.get("/", async (req, res) => {
+  console.log("GOOGLE_CLIENT_ID: ", process.env.GOOGLE_CLIENT_ID);
+  console.log("GOOGLE_CLIENT_SECRET: ", process.env.GOOGLE_CLIENT_SECRET);
+  console.log("FACEBOOK_CLIENT_ID: ", process.env.FACEBOOK_CLIENT_ID);
+  console.log("FACEBOOK_CLIENT_SECRET: ", process.env.FACEBOOK_CLIENT_SECRET);
   console.log("req.body.menu: ", req.body.menu);
   console.log("app.get("/", async (req, res)");
   console.log("state: ", state);
   try{
     const result = await db.query(
-      "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY books.id ASC;"
+      "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY books.id ASC;"
     );
     posts = [];
     posts = result.rows;
@@ -64,8 +94,10 @@ app.get("/", async (req, res) => {
     res.render("index.ejs", {
       posts:posts,
       state: state,
+      isLogin: isLogin,
     });
   } catch(err){
+    console.log("Error to access database");
     console.log(err.stack);
   }
 });
@@ -73,23 +105,30 @@ app.get("/", async (req, res) => {
 //triggered when home button or "My Note" button is pressed
 //show the My Note page
 app.get("/me", async (req, res) => {
-  state = "user";
-  console.log("state: ", state);
-  try{
-    const result = await db.query(
-      "SELECT * FROM books WHERE user_id = $1 ORDER BY id ASC", 
-      [user_id]
-    );
-    posts = [];
-    posts = result.rows;
-    console.log(posts);
-    res.render("index.ejs", {
-      posts:posts,
-      state: state,
-      username: username
-    });
-  } catch(err){
-    console.log(err.stack);
+  console.log(req.user);
+  if (req.isAuthenticated()) {
+    state = "user";
+    console.log("state: ", state);
+    console.log("userID: ", user_id);
+    try{
+      const result = await db.query(
+        "SELECT * FROM books WHERE user_id = $1 ORDER BY id ASC", 
+        [user_id]
+      );
+      posts = [];
+      posts = result.rows;
+      console.log(posts);
+      res.render("index.ejs", {
+        posts:posts,
+        state: state,
+        username: username,
+        isLogin: isLogin,
+      });
+    } catch(err){
+      console.log(err.stack);
+    }
+  } else {
+    res.redirect("/login");
   }
 });
 
@@ -122,7 +161,7 @@ app.post("/search", async (req, res) =>{
     if (type == "title"){
       try{
         const result = await db.query(
-          "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE LOWER(books.title) LIKE '%' || $1 || '%';",
+          "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE LOWER(books.title) LIKE '%' || $1 || '%';",
           [input.toLowerCase()]
         );
         posts = [];
@@ -134,13 +173,15 @@ app.post("/search", async (req, res) =>{
             posts:posts,
             state: state,
             message: "No results found for your search.",
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         } else{
           res.render("index.ejs",{
             posts:posts,
             state: state,
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         }
       } catch (err){
@@ -149,7 +190,7 @@ app.post("/search", async (req, res) =>{
     } else if (type == "isbn"){
       try{
         const result = await db.query(
-          "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE books.isbn = $1;",
+          "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE books.isbn = $1;",
           [input]
         );
         posts = [];
@@ -161,13 +202,15 @@ app.post("/search", async (req, res) =>{
             posts:posts,
             state: state,
             message: "No results found for your search.",
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         } else{
           res.render("index.ejs",{
             posts:posts,
             state: state,
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         }
       } catch (err){
@@ -192,13 +235,15 @@ app.post("/search", async (req, res) =>{
             posts:posts,
             state: state,
             message: "No results found for your search.",
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         } else{
           res.render("index.ejs",{
             posts:posts,
             state: state,
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         }
       } catch (err){
@@ -220,13 +265,15 @@ app.post("/search", async (req, res) =>{
             posts:posts,
             state: state,
             error: "No results found for your search.",
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         } else{
           res.render("index.ejs",{
             posts:posts,
             state: state,
-            search: true
+            search: true,
+            isLogin: isLogin,
           });
         }
       } catch (err){
@@ -244,18 +291,18 @@ app.post("/sort", async (req, res) => {
   let query;
   let message;
   if (state == "home"){
-    if (sortType == "Book title by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY title ASC;";
-    } else if (sortType == "Latest by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY books.id ASC;;";
-    } else if (sortType == "Rating by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY rating ASC;";
-    } else if (sortType == "Book title by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY title DESC;";
-    } else if (sortType == "Latest by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY books.id DESC;";
-    } else if (sortType == "Rating by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id ORDER BY rating DESC;";
+    if (sortType == "Book title (A-Z)"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY title ASC;";
+    } else if (sortType == "Date: Oldest First"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY books.id ASC;;";
+    } else if (sortType == "Rating: Low to High"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY rating ASC;";
+    } else if (sortType == "Book title (Z-A)"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY title DESC;";
+    } else if (sortType == "Date: Newest First"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY books.id DESC;";
+    } else if (sortType == "Rating: High to Low"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id ORDER BY rating DESC;";
     }
 
     try{
@@ -273,7 +320,8 @@ app.post("/sort", async (req, res) => {
         { 
           posts:posts,
           state: state,
-          message: message
+          message: message,
+          isLogin: isLogin,
         }
       );
     } catch (err){
@@ -281,18 +329,18 @@ app.post("/sort", async (req, res) => {
     }
 
   } else if (state == "user"){
-    if (sortType == "Book title by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY title ASC;";
-    } else if (sortType == "Latest by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY books.id ASC;;";
-    } else if (sortType == "Rating by ASC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY rating ASC;";
-    } else if (sortType == "Book title by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY title DESC;";
-    } else if (sortType == "Latest by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY books.id DESC;";
-    } else if (sortType == "Rating by DESC"){
-      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.name FROM books JOIN users ON books.user_id = users.id WHERE users.name = $1 ORDER BY rating DESC;";
+    if (sortType == "Book title (A-Z)"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY title ASC;";
+    } else if (sortType == "Date: Oldest First"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY books.id ASC;;";
+    } else if (sortType == "Rating: Low to High"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY rating ASC;";
+    } else if (sortType == "Book title (Z-A)"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY title DESC;";
+    } else if (sortType == "Date: Newest First"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY books.id DESC;";
+    } else if (sortType == "Rating: High to Low"){
+      query = "SELECT books.id, books.user_id, books.isbn, books.rating, books.title, books.review, books.date, users.username FROM books JOIN users ON books.user_id = users.id WHERE users.username = $1 ORDER BY rating DESC;";
     }
 
     try{
@@ -310,7 +358,8 @@ app.post("/sort", async (req, res) => {
         { 
           posts:posts,
           state: state,
-          message: message
+          message: message,
+          isLogin: isLogin,
         }
       );
     } catch (err){
@@ -321,7 +370,12 @@ app.post("/sort", async (req, res) => {
 
 //show user the add review page
 app.get("/new", (req, res) => {
-  res.render("modify.ejs", { heading: "New Book", submit: "Add a new book" });
+  console.log(req.user);
+  if (req.isAuthenticated()) {
+    res.render("partials/modify.ejs", { heading: "New Book", submit: "Add a new book" });
+  } else {
+    res.redirect("/login");
+  }
 });
 
 //show user the edit review page
@@ -336,7 +390,7 @@ app.post("/edit", async (req, res) => {
     posts = [];
     posts = response.rows[0];
     console.log(posts.data);
-    res.render("modify.ejs", {
+    res.render("partials/modify.ejs", {
       heading: "Edit Review",
       submit: "Update Review",
       post: posts,
@@ -423,6 +477,214 @@ app.post("/delete", async (req, res) => {
   } catch (err){
     console.log(err.stack);
   }
+});
+
+//bring user to sign up/login page
+app.get("/login", (req, res) => {
+  res.render("partials/signup-and-login.ejs");
+});
+
+//bring user to home page after log out
+app.get("/logout", (req, res) => {
+  isLogin = false;
+  req.logout(function (err) {
+    if (err) {
+      return next(err);
+    }
+    console.log("logout successfully!");
+    state = "home";
+    username = "";
+    user_id = 0;
+    res.redirect("/");
+  });
+});
+
+app.get("/auth/google", passport.authenticate("google", {
+  scope: ["profile", "email"]
+}));
+
+app.get("/auth/google/me", passport.authenticate("google", {
+  successRedirect: "/me", 
+  failureRedirect: "/login",
+}));
+
+app.get("/auth/facebook", passport.authenticate("facebook", {
+  scope: ["public_profile", "email"]
+}));
+
+app.get("/auth/facebook/me", passport.authenticate("facebook", {
+  successRedirect: "/me", 
+  failureRedirect: "/login",
+}));
+
+//determine whether the login details are correct after user submission (local strategy)
+app.post(
+  "/login",
+  passport.authenticate("local", {
+    successRedirect: "/me",
+    failureRedirect: "/login",
+  })
+);
+
+//handle new user details after submission (local strategy)
+app.post("/register", async (req, res) => {
+  email = req.body.email;
+  password = req.body.password;
+  username = req.body.username;
+
+  try {
+    const checkResult = await db.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+
+    if (checkResult.rows.length > 0) {
+      res.redirect("/login");
+    } else {
+      bcrypt.hash(password, saltRounds, async (err, hash) => {
+        if (err) {
+          console.error("Error hashing password:", err);
+        } else {
+          const result = await db.query(
+            "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
+            [username, email, hash]
+          );
+          
+          const user = result.rows[0];
+          user_id = user.id;
+          req.login(user, (err) => {
+            console.log("success");
+            isLogin = true;
+            res.redirect("/me");
+          });
+        }
+      });
+    }
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+//if got use more than 1 strategies need mention the "local" keyword for the local strategy
+passport.use("local", 
+  new Strategy(async function verify(username, password, cb) {
+    try {
+      const result = await db.query("SELECT * FROM users WHERE email = $1 ", [
+        username,
+      ]);
+      if (result.rows.length > 0) {
+        const user = result.rows[0];
+        const storedHashedPassword = user.password;
+        bcrypt.compare(password, storedHashedPassword, (err, valid) => {
+          if (err) {
+            //Error with password check
+            console.error("Error comparing passwords:", err);
+            return cb(err);
+          } else {
+            if (valid) {
+              isLogin = true;
+              //update current username
+              username = user.username;
+              //update current user id
+              user_id = user.id;
+              //Passed password check
+              return cb(null, user);
+            } else {
+              //Did not pass password check
+              return cb(null, false);
+            }
+          }
+        });
+      } else {
+        return cb("User not found");
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  })
+);
+
+//define Google authentication strategy
+passport.use(
+  "google", 
+  new GoogleStrategy (
+  {
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    //callbackURL is where Google redirects after authentication.
+    callbackURL: "http://localhost:3000/auth/google/me",
+    //userProfileURL is where Passport fetches the user's profile data.
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo", //hold user profile information
+  }, 
+  async (accessToken, refreshToken, profile, cb) =>{
+    try {
+      console.log("Profile", profile);
+      username = profile.displayName;
+      const result = await db.query("SELECT * FROM users WHERE email = $1;", [
+        profile.email,
+      ]);
+      if (result.rows.length === 0) {
+        const newUser = await db.query(
+          "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
+          [profile.displayName, profile.email, "google_oauth"]
+        );
+        console.log("New user: ", newUser.rows);
+        user_id = newUser.id;
+        isLogin = true;
+        return cb(null, newUser.rows[0]);
+      } else {
+        user_id = result.rows[0].id;
+        isLogin = true;
+        return cb(null, result.rows[0]);
+      }
+    } catch (err) {
+      return cb(err);
+    }
+  }
+));
+
+//define Facebook authentication strategy
+passport.use(
+  "facebook", 
+  new FacebookStrategy (
+  {
+    clientID: process.env.FACEBOOK_CLIENT_ID,
+    clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+    //callbackURL is where Facebook redirects after authentication.
+    callbackURL: "http://localhost:3000/auth/facebook/me",
+  }, 
+  async (accessToken, refreshToken, profile, cb) =>{
+    try {
+      console.log("Profile", profile);
+      username = profile.displayName;
+      const result = await db.query("SELECT * FROM users WHERE email = $1;", [
+        profile.id,
+      ]);
+      if (result.rows.length === 0) {
+        //we store the facebook user id into the email column
+        const newUser = await db.query(
+          "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
+          [profile.displayName, profile.id, "facebook_oauth"]
+        );
+        user_id = newUser.id;
+        console.log("New user: ", newUser.rows);
+        isLogin = true;
+        return cb(null, newUser.rows[0]);
+      } else {
+        user_id = result.rows[0].id;
+        isLogin = true;
+        return cb(null, result.rows[0]);
+      }
+    } catch (err) {
+      return cb(err);
+    }
+  }
+));
+
+passport.serializeUser((user, cb) => {
+  cb(null, user);
+});
+passport.deserializeUser((user, cb) => {
+  cb(null, user);
 });
 
 app.listen(port, () => {
