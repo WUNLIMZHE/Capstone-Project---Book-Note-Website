@@ -19,17 +19,22 @@ Node installation link: <br/>
 https://nodejs.org/en
 ```
 
-2. In the thriftbook directory, install the dependencies using npm install.<br/>
+2. Change to the folder directory which contains the source code.<br/>
+```
+cd Capstone-Project---Book-Note-Website
+```
+
+3. In the directory, install the dependencies using npm install.<br/>
 ```
 npm install
 ```
 
-2. Run the server:<br/>
+4. Run the server:<br/>
 ```
 node index.js
 ```
 
-4. Go to http://localhost:3000.
+5. Go to http://localhost:3000.
 ```
 http://localhost:3000
 ```
