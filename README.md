@@ -9,7 +9,7 @@ Running the program
 -------------------------------------------------------
 Clone this repo:
 ```
-git clone [https://github.com/WUNLIMZHE/Capstone-Project---Book-Note-Website.git]
+git clone https://github.com/WUNLIMZHE/Capstone-Project---Book-Note-Website.git
 cd Capstone-Project---Book-Note-Website
 ```
 **Running with Node** <br/>
